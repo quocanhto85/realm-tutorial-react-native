@@ -31,20 +31,56 @@ const AuthProvider = ({ children }) => {
     // for the logged-in user.
 
     // TODO: Return a cleanup function that closes the user realm.
+
+    const config = {
+      sync: {
+        user,
+        partitionValue: `user=${user.id}`
+      }
+    };
+
+    // Open a realm with the logged in user's partition value in order
+    // to get the projects that the logged in user is a member of
+    Realm.open(config).then((userRealm) => {
+      realmRef.current = userRealm;
+      const users = userRealm.objects("User");
+
+      users.addListener(() => {
+        // The user custom data object may not have been loaded on
+        // the server side yet when a user is first registered.
+
+        if (users.length === 0) {
+          setProjectData([myProject]);
+        } else {
+          const { memberOf } = users[0];
+          setProjectData([...memberOf]);
+        }
+      });
+    });
+
+    return () => {
+      // cleanup function
+      const userRealm = realmRef.current;
+      if (userRealm) {
+        userRealm.close();
+        realmRef.current = null;
+        setProjectData([]); // set project data to an empty array (this prevents the array from staying in state on logout)
+      }
+    }
   }, [user]);
 
   // The signIn function takes an email and password and uses the
   // emailPassword authentication provider to log in.
   const signIn = async (email, password) => {
-    // TODO: Pass the email and password to Realm's email password provider to log in.
-    // Use the setUser() function to set the logged-in user.
+    const creds = Realm.Credentials.emailPassword(email, password);
+    const newUser = await app.logIn(creds);
+    setUser(newUser);
   };
 
   // The signUp function takes an email and password and uses the
   // emailPassword authentication provider to register the user.
   const signUp = async (email, password) => {
-    // TODO: Pass the email and password to Realm's email password provider to register the user.
-    // Registering only registers and does not log in.
+    await app.emailPasswordAuth.registerUser(email, password);
   };
 
   // The signOut function calls the logOut function on the currently
@@ -55,6 +91,8 @@ const AuthProvider = ({ children }) => {
       return;
     }
     // TODO: Log out the current user and use the setUser() function to set the current user to null.
+    user.logOut();
+    setUser(null);
   };
 
   return (
